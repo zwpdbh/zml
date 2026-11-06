@@ -6,6 +6,16 @@ ZML is a Zig project built with Bazel. Core library code lives in `zml/`, with I
 
 ## Build, Test, and Development Commands
 
+The root `build.zig` wraps Bazelisk for common workflows:
+
+- `zig build`: builds the main ZML library.
+- `zig build test`: runs core, shared utility, and tokenizer tests.
+- `zig build mnist`: runs the MNIST example.
+- `zig build llm -- --model=hf://... --prompt="..."`: runs the LLM example.
+- Add `-Dcuda=true` to any step for CUDA, or `-Dcuda-runtime=/path/to/libcudart.so.13` to select the runtime preloaded for run steps.
+
+The underlying Bazel commands remain available:
+
 - `bazel build //zml`: builds the main ZML library.
 - `bazel test //zml:test`: runs the core Zig test target.
 - `bazel test //stdx:test`: runs shared utility tests.

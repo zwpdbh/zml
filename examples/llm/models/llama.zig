@@ -1,3 +1,6 @@
+const common = @import("common.zig");
+pub const Meshes = common.Meshes;
+pub const GenerationOptions = common.GenerationOptions;
 pub const inference = @import("llama/inference.zig");
 pub const CompilationParameters = inference.CompilationParameters;
 pub const model = @import("llama/model.zig");

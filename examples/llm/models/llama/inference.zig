@@ -49,6 +49,7 @@ pub const Args = struct {
     io: std.Io,
     tokens_buf: *zml.Buffer,
     next_token_buf: *zml.Buffer,
+    logits_buf: ?*zml.Buffer = null,
     token_index_buf: *zml.Buffer,
     active_length_buf: *zml.Buffer,
     kv_cache_buffers: *zml.Bufferized(model.KvCache),
@@ -105,6 +106,7 @@ const Forward = struct {
 
     pub const Output = struct {
         tokens: zml.Tensor,
+        logits: zml.Tensor,
         kv_cache: model.KvCache,
         rng: zml.Tensor.Rng,
     };
@@ -137,6 +139,7 @@ const Forward = struct {
         });
         return .{
             .tokens = if (input.tokens.dim(.s) == 1) result.tokens.reuseBuffer(input.tokens) else result.tokens,
+            .logits = result.logits,
             .kv_cache = kv_cache.reuseBuffer(input.kv_cache),
             .rng = .{ ._state = result.rng._state.reuseBuffer(input.rng._state) },
         };
@@ -158,6 +161,8 @@ pub const KernelRunner = struct {
 };
 
 pub fn run(runner: *KernelRunner, args: Args) void {
+    var discarded_logits: zml.Buffer = undefined;
+    const logits_buf = args.logits_buf orelse &discarded_logits;
     runner.forward.run(args.io, .{
         .inputs = .{
             .tokens = args.tokens_buf.*,
@@ -169,10 +174,12 @@ pub fn run(runner: *KernelRunner, args: Args) void {
         },
         .outputs = .{
             .tokens = args.next_token_buf,
+            .logits = logits_buf,
             .kv_cache = args.kv_cache_buffers,
             .rng = args.rng_buffers,
         },
     }, .{});
+    if (args.logits_buf == null) discarded_logits.deinit();
 }
 
 fn compileKernel(

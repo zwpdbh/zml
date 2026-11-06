@@ -21,7 +21,7 @@ pub const Config = struct {
     rms_norm_eps: f32,
     hf_rope_impl: bool = true,
     tie_word_embeddings: bool = false,
-    rope_scaling: zml.nn.RopeOpts.Scaling = .{ .default = .{} },
+    rope_scaling: ?zml.nn.RopeOpts.Scaling = null,
 
     pub const EosTokens = union(enum) {
         int: u32,
@@ -357,6 +357,7 @@ pub const LmHead = struct {
 
     pub const Output = struct {
         tokens: zml.Tensor,
+        logits: zml.Tensor,
         rng: zml.Tensor.Rng,
     };
 
@@ -377,7 +378,7 @@ pub const LmHead = struct {
             logits = logits.rename(.{ .d = .voc });
 
         const next_tokens, const new_rng = zml.nn.sampleTokens(logits, self.gen_opts, input.rng);
-        return .{ .tokens = next_tokens.convert(.u32), .rng = new_rng };
+        return .{ .tokens = next_tokens.convert(.u32), .logits = logits.convert(.f32), .rng = new_rng };
     }
 };
 
@@ -465,11 +466,14 @@ const RmsNorm = struct {
         self.weight.deinit();
     }
 
-    /// L2 normalization of input tensor along `.d` axis.
+    /// RMS-normalizes in f32 along `.d`, then restores the input dtype.
     pub fn forward(self: RmsNorm, input: zml.Tensor) zml.Tensor {
         const x = if (input.shape().isFullyTagged()) input else input.withPartialTags(.{.d});
-        const normalized = zml.nn.rmsNorm(x, .d, self.eps);
-        return normalized.mul(self.weight.convert(x.dtype()).withTags(.{.d}).broad(x.shape()));
+        const x_f32 = x.convert(.f32);
+        const normalized = zml.nn.rmsNorm(x_f32, .d, self.eps);
+        return normalized
+            .mul(self.weight.convert(.f32).withTags(.{.d}).broad(x_f32.shape()))
+            .convert(x.dtype());
     }
 };
 
@@ -512,16 +516,15 @@ const SelfAttn = struct {
     rope_opts: zml.nn.RopeOpts = undefined,
 
     pub fn init(store: zml.io.TensorStore.View, config: Config) !SelfAttn {
-        var rope_scaling = config.rope_scaling;
+        var rope_scaling: zml.nn.RopeOpts.Scaling = config.rope_scaling orelse .{ .default = .{} };
         rope_scaling.setRopeTheta(config.rope_theta);
         return .{
             .q_proj = .init(store.createTensor("q_proj.weight", .{ .dout, .d }, .model, .{ .dout = .model }), null, .d),
             .k_proj = .init(store.createTensor("k_proj.weight", .{ .dout, .d }, .model, .{ .dout = .model }), null, .d),
             .v_proj = .init(store.createTensor("v_proj.weight", .{ .dout, .d }, .model, .{ .dout = .model }), null, .d),
             .o_proj = .init(store.createTensor("o_proj.weight", .{ .dout, .d }, .model, .{ .d = .model }), null, .d),
-            // TODO(Corentin): fix that
-            .q_norm = null,
-            .k_norm = null,
+            .q_norm = if (store.hasKey("q_norm.weight")) .init(store.withPrefix("q_norm"), config.rms_norm_eps) else null,
+            .k_norm = if (store.hasKey("k_norm.weight")) .init(store.withPrefix("k_norm"), config.rms_norm_eps) else null,
             .num_heads = @intCast(config.num_attention_heads),
             .num_kv_heads = @intCast(config.num_key_value_heads),
             .rope_opts = .{

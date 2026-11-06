@@ -1,7 +1,7 @@
 load("@bazel_lib//lib:transitions.bzl", "platform_transition_filegroup")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load", "oci_push")
-load("@rules_zig//zig:defs.bzl", "zig_binary")
+load("@rules_zig//zig:defs.bzl", "zig_binary", "zig_library")
 load("@tar.bzl//tar:mtree.bzl", "mtree_spec")
 load("@tar.bzl//tar:tar.bzl", "tar")
 
@@ -11,6 +11,21 @@ zig_binary(
     main = "main.zig",
     visibility = ["//visibility:public"],
     deps = ["//zml", "@linenoise"],
+)
+
+zig_library(
+    name = "llama_model",
+    srcs = [
+        "models/common.zig",
+        "models/llama.zig",
+        "models/llama/inference.zig",
+        "models/llama/model.zig",
+        "models/llama/session.zig",
+    ],
+    import_name = "llama",
+    main = "models/llama.zig",
+    visibility = ["//visibility:public"],
+    deps = ["//zml"],
 )
 
 zig_binary(

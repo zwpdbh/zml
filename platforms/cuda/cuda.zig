@@ -31,6 +31,9 @@ pub fn isEnabled() bool {
 }
 
 pub fn needsCudaCompat(io: std.Io, sandbox_path: []const u8) !bool {
+    // NVIDIA's CUDA compatibility packages do not support WSL; use the host driver.
+    if (isWsl(io)) return false;
+
     var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const nvidia_compat_path = try stdx.Io.Dir.path.bufJoinZ(&buf, &.{ sandbox_path, "bin", "compat_probe" });
 
@@ -57,6 +60,11 @@ pub fn needsCudaCompat(io: std.Io, sandbox_path: []const u8) !bool {
             break :blk false;
         },
     };
+}
+
+fn isWsl(io: std.Io) bool {
+    std.Io.Dir.accessAbsolute(io, "/dev/dxg", .{}) catch return false;
+    return true;
 }
 
 fn hasNvidiaDevice(io: std.Io) bool {
